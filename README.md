@@ -46,4 +46,4 @@ If you need help, please open an issue in the repository.
 
 ## Author
 
-[Your Name]
+NYUMBAYIRE Laurent
