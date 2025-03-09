@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Station</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.1.3/axios.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
+
+        :root {
+            --primary-color: #3a86ff;
+            --secondary-color: #4361ee;
+            --accent-color: #4cc9f0;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --bg-dark: #f8f9fa;
+            --bg-light: #ffffff;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-primary: #2d3748;
+            --text-secondary: #718096;
+            --border-color: rgba(226, 232, 240, 0.8);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 20px;
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(58, 134, 255, 0.03) 0%, transparent 70%),
+                radial-gradient(circle at 80% 70%, rgba(76, 201, 240, 0.03) 0%, transparent 70%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            line-height: 1.5;
+            position: relative;
+        }
+
+        /* Animated Drops */
+        .drops-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .drop {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: fall linear infinite, sway ease-in-out infinite;
+            filter: blur(1px);
+        }
+
+        .drop::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform: scale(0.9);
+            filter: blur(2px);
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), transparent 70%);
+            border-radius: 50%;
+        }
+
+        @keyframes fall {
+            0% {
+                transform: translateY(-100px);
+            }
+            100% {
+                transform: translateY(calc(100vh + 100px));
+            }
+        }
+
+        @keyframes sway {
+            0%, 100% {
+                transform: translateX(0);
+            }
+            50% {
+                transform: translateX(20px);
+            }
+        }
+
+        .dashboard {
+            max-width: 1280px;
+            margin: 30px auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .title-section {
+            text-align: center;
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .title-section h1 {
+            font-size: 2.4rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 15px;
+            position: relative;
+            display: inline-block;
+        }
+
+        .title-section h1::after {
+            content: '|';
+            position: absolute;
+            right: -15px;
+            animation: blink 1s infinite;
+            color: var(--primary-color);
+            display: none;
+        }
+
+        .title-section h1.typing::after {
+            display: inline-block;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .title-section p {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+            min-height: 1.5em;
+            position: relative;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .title-section p::after {
+            content: '|';
+            position: absolute;
+            right: -8px;
+            animation: blink 1s infinite;
+            color: var(--primary-color);
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 30px;
+            box-shadow: var(--shadow-lg);
+            transition: var(--transition);
+            transform: translateY(50px);
+            opacity: 0;
+        }
+
+        .glass-panel.animate {
+            transform: translateY(0);
+            opacity: 1;
+            transition: transform 0.6s ease-out, opacity 0.6s ease-out;
+        }
+
+        .glass-panel:hover {
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .metrics-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .metric-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 30px;
+            position: relative;
+            transition: var(--transition);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-md);
+            overflow: hidden;
+            transform: translateY(50px);
+            opacity: 0;
+        }
+
+        .metric-card.animate {
+            transform: translateY(0);
+            opacity: 1;
+            transition: transform 0.6s ease-out, opacity 0.6s ease-out;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+        }
+
+        .metric-card.temperature::before {
+            background: linear-gradient(90deg, #3a86ff, #4cc9f0);
+        }
+
+        .metric-card.humidity::before {
+            background: linear-gradient(90deg, #4361ee, #3a86ff);
+        }
+
+        /* Temperature animation */
+        .temperature-animation {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            border-radius: var(--radius-lg);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .temperature-animation.show {
+            opacity: 0.15;
+        }
+
+        .temperature-animation .bubble {
+            position: absolute;
+            background: radial-gradient(circle at center, rgba(58, 134, 255, 0.8), rgba(76, 201, 240, 0.4));
+            border-radius: 50%;
+            animation: bubble-rise 3s ease-in infinite;
+        }
+
+        @keyframes bubble-rise {
+            0% {
+                transform: translateY(100%) scale(0);
+                opacity: 0.7;
+            }
+            50% {
+                opacity: 0.5;
+            }
+            100% {
+                transform: translateY(-20%) scale(1);
+                opacity: 0;
+            }
+        }
+
+        .metric-icon {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            opacity: 0;
+            position: absolute;
+            transition: all 0.5s ease;
+        }
+
+        .temperature .metric-icon {
+            top: 50%;
+            left: 25px;
+            transform: translateY(-50%);
+            color: #3a86ff;
+        }
+
+        .humidity .metric-icon {
+            top: 50%;
+            left: 25px;
+            transform: translateY(-50%);
+            color: #4361ee;
+        }
+
+        .metric-icon.animate {
+            opacity: 0.8;
+            left: 30px;
+        }
+
+        .metric-icon.pulse {
+            animation: icon-pulse 0.5s ease;
+        }
+
+        @keyframes icon-pulse {
+            0% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.2); }
+            100% { transform: translateY(-50%) scale(1); }
+        }
+
+        .metric-label {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            padding-left: 60px;
+        }
+
+        .metric-value {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin: 15px 0;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1.1;
+            padding-left: 60px;
+            position: relative;
+            z-index: 2;
+            transition: transform 0.3s ease;
+        }
+
+        .metric-value.highlight {
+            animation: value-highlight 0.8s ease;
+        }
+
+        @keyframes value-highlight {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .temperature .metric-value {
+            background: linear-gradient(45deg, #3a86ff, #4cc9f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .humidity .metric-value {
+            background: linear-gradient(45deg, #4361ee, #3a86ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .metric-unit {
+            font-size: 1.4rem;
+            vertical-align: super;
+            margin-left: 5px;
+            font-weight: 500;
+        }
+
+        .metric-average {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.03);
+            border-radius: var(--radius-sm);
+            width: fit-content;
+            margin-left: 60px;
+        }
+
+        .metric-average i {
+            margin-right: 8px;
+            color: var(--primary-color);
+        }
+
+        .chart-section {
+            padding: 10px 0 20px;
+        }
+
+        .chart-container {
+            height: 400px;
+            width: 100%;
+            position: relative;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .section-title::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 20px;
+            background: var(--primary-color);
+            margin-right: 10px;
+            border-radius: 4px;
+        }
+
+        .section-title.typing::after {
+            content: '|';
+            display: inline-block;
+            animation: blink 1s infinite;
+            color: var(--primary-color);
+            margin-left: 2px;
+        }
+
+        .status-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.02);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .status-icon {
+            margin-right: 8px;
+            font-size: 1rem;
+            color: var(--primary-color);
+        }
+
+        .status-value {
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-left: 4px;
+        }
+
+        .db-pulse {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success-color);
+            margin-right: 10px;
+            animation: pulse 1.8s infinite;
+        }
+
+        .db-pulse.error {
+            background: var(--danger-color);
+            animation: pulse-error 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(46, 204, 113, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+            }
+        }
+
+        @keyframes pulse-error {
+            0% {
+                box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(231, 76, 60, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
+            }
+        }
+
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(58, 134, 255, 0.1);
+            padding: 6px 12px;
+            border-radius: 30px;
+            color: var(--primary-color);
+            font-size: 0.8rem;
+            font-weight: 500;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid rgba(58, 134, 255, 0.2);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--primary-color);
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: blink 1.2s ease-in-out infinite;
+        }
+
+        .chart-legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .chart-legend.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .legend-color.temp {
+            background: var(--primary-color);
+        }
+
+        .legend-color.humidity {
+            background: var(--accent-color);
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                margin: 15px auto;
+                padding: 15px;
+            }
+
+            .title-section h1 {
+                font-size: 1.8rem;
+            }
+
+            .title-section p {
+                font-size: 0.95rem;
+            }
+
+            .glass-panel {
+                padding: 20px;
+            }
+
+            .metric-value {
+                font-size: 2.8rem;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+
+            .status-section {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+
+            .status-item {
+                width: 100%;
+            }
+
+            .metric-icon {
+                font-size: 2rem;
+            }
+
+            .metric-label, .metric-value, .metric-average {
+                padding-left: 50px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .main-container {
+                grid-template-columns: 2fr 1fr;
+            }
+
+            .metrics-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Animated drops container -->
+    <div class="drops-container" id="drops-container"></div>
+
+    <div class="dashboard">
+        <div class="title-section">
+            <h1 id="main-title" class="typing"></h1>
+            <p id="subtitle"></p>
+        </div>
+
+        <div class="main-container">
+            <div class="glass-panel" id="chart-panel">
+                <div class="chart-section">
+                    <h2 class="section-title typing" id="chart-title"></h2>
+                    <div class="chart-legend" id="chart-legend">
+                        <div class="legend-item">
+                            <div class="legend-color temp"></div>
+                            <span>Temperature (°C)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color humidity"></div>
+                            <span>Humidity (%)</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="weatherChart"></canvas>
+                    </div>
+
+                    <div class="status-section">
+                        <div class="status-item">
+                            <div id="db-pulse" class="db-pulse"></div>
+                            <i class="fas fa-database status-icon"></i>
+                            Database: <span id="db-status" class="status-value">Waiting for data...</span>
+                        </div>
+                        <div class="status-item">
+                            <i class="fas fa-sync-alt status-icon"></i>
+                            Last update: <span id="last-update" class="status-value">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metrics-container">
+                <div class="metric-card temperature" id="temp-card">
+                    <div class="temperature-animation" id="temp-animation"></div>
+                    <i class="fas fa-temperature-high metric-icon" id="temp-icon"></i>
+                    <div class="metric-label">Temperature</div>
+                    <div class="metric-value"><span id="temp">--</span><span class="metric-unit">°C</span></div>
+                    <div class="metric-average">
+                        <i class="fas fa-chart-line"></i> 5min avg: <span id="avg-temp">--</span>°C
+                    </div>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div> LIVE
+                    </div>
+                </div>
+
+                <div class="metric-card humidity" id="humidity-card">
+                    <i class="fas fa-tint metric-icon" id="humidity-icon"></i>
+                    <div class="metric-label">Humidity</div>
+                    <div class="metric-value"><span id="humidity">--</span><span class="metric-unit">%</span></div>
+                    <div class="metric-average">
+                        <i class="fas fa-chart-line"></i> 5min avg: <span id="avg-humidity">--</span>%
+                    </div>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div> LIVE
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize chart with custom styling
+        const ctx = document.getElementById('weatherChart').getContext('2d');
+        Chart.defaults.color = '#718096';
+        Chart.defaults.font.family = "'Montserrat', sans-serif";
+        
+        // Create gradient for temperature dataset
+        const tempGradient = ctx.createLinearGradient(0, 0, 0, 400);
+        tempGradient.addColorStop(0, 'rgba(58, 134, 255, 0.2)');
+        tempGradient.addColorStop(1, 'rgba(58, 134, 255, 0)');
+        
+        // Create gradient for humidity dataset
+        const humidityGradient = ctx.createLinearGradient(0, 0, 0, 400);
+        humidityGradient.addColorStop(0, 'rgba(76, 201, 240, 0.2)');
+        humidityGradient.addColorStop(1, 'rgba(76, 201, 240, 0)');
+
+        const weatherChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        borderColor: '#3a86ff',
+                        backgroundColor: tempGradient,
+                        borderWidth: 3,
+                        pointBackgroundColor: '#3a86ff',
+                        pointBorderColor: 'rgba(255, 255, 255, 0.8)',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        tension: 0.4,
+                        fill: true,
+                        data: [],
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        borderColor: '#4cc9f0',
+                        backgroundColor: humidityGradient,
+                        borderWidth: 3,
+                        pointBackgroundColor: '#4cc9f0',
+                        pointBorderColor: 'rgba(255, 255, 255, 0.8)',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        tension: 0.4,
+                        fill: true,
+                        data: [],
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                        titleFont: {
+                            size: 14,
+                            weight: 'bold',
+                            family: "'Montserrat', sans-serif"
+                        },
+                        bodyFont: {
+                            size: 13,
+                            family: "'Montserrat', sans-serif"
+                        },
+                        padding: 12,
+                        cornerRadius: 8,
+                        displayColors: true,
+                        usePointStyle: true,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toFixed(1);
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.04)',
+                            borderColor: 'rgba(0, 0, 0, 0.1)',
+                            tickColor: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            font: {
+                                size: 11
+                            },
+                            maxRotation: 45,
+                            minRotation: 45
+                        },
+                        title: {
+                            display: true,
+                            text: 'Time',
+                            font: {
+                                size: 13,
+                                weight: '500'
+                            },
+                            padding: {top: 10, bottom: 0}
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)',
+                            font: {
+                                size: 13,
+                                weight: '500'
+                            },
+                            padding: {top: 0, bottom: 10}
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.04)',
+                            borderColor: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        min: 0,
+                        max: 50,
+                        ticks: {
+                            stepSize: 10,
+                            callback: function(value) {
+                                return value + '°C';
+                            }
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Humidity (%)',
+                            font: {
+                                size: 13,
+                                weight: '500'
+                            },
+                            padding: {top: 0, bottom: 10}
+                        },
+                        min: 0,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                            borderColor: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    }
+                },
+                animations: {
+                    tension: {
+                        duration: 1000,
+                        easing: 'linear'
+                    },
+                    y: {
+                        duration: 1000,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            }
+        });
+
+        // Create animated drops
+        function createDrops() {
+            const dropsContainer = document.getElementById('drops-container');
+            const numDrops = 20;
+            
+            for (let i = 0; i < numDrops; i++) {
+                const drop = document.createElement('div');
+                drop.className = 'drop';
+                
+                // Random size between 5px and 20px
+                const size = Math.random() * 15 + 5;
+                drop.style.width = `${size}px`;
+                drop.style.height = `${size}px`;
+                
+                // Random position
+                const posX = Math.random() * 100;
+                drop.style.left = `${posX}%`;
+                
+                // Random opacity
+                drop.style.opacity = (Math.random() * 0.3 + 0.1).toString();
+                
+                // Random animation duration between 10s and 20s
+                const duration = Math.random() * 10 + 10;
+                drop.style.animationDuration = `${duration}s`;
+                
+                // Random animation delay
+                const delay = Math.random() * 10;
+                drop.style.animationDelay = `${delay}s`;
+                
+                // Random sway animation duration
+                const swayDuration = Math.random() * 5 + 3;
+                drop.style.animationDuration = `${duration}s, ${swayDuration}s`;
+                
+                dropsContainer.appendChild(drop);
+            }
+        }
+
+        // Create temperature bubbles animation
+        function createTemperatureBubbles() {
+            const tempAnimation = document.getElementById('temp-animation');
+            const numBubbles = 10;
+            
+            // Clear existing bubbles
+            tempAnimation.innerHTML = '';
+            
+            for (let i = 0; i < numBubbles; i++) {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble';
+                
+                // Random size between 5px and 15px
+                const size = Math.random() * 10 + 5;
+                bubble.style.width = `${size}px`;
+                bubble.style.height = `${size}px`;
+                
+                // Random position
+                const posX = Math.random() * 100;
+                bubble.style.left = `${posX}%`;
+                bubble.style.bottom = `-${size}px`;
+                
+                // Random animation duration
+                const duration = Math.random() * 2 + 2;
+                bubble.style.animationDuration = `${duration}s`;
+                
+                // Random animation delay
+                const delay = Math.random() * 2;
+                bubble.style.animationDelay = `${delay}s`;
+                
+                tempAnimation.appendChild(bubble);
+            }
+            
+            // Show the animation
+            tempAnimation.classList.add('show');
+            
+            // Hide after animation completes
+            setTimeout(() => {
+                tempAnimation.classList.remove('show');
+            }, 4000);
+        }
+
+        // Check for most recent data immediately
+        function fetchCurrentReadings() {
+            axios.get('/api/weather/current')
+                .then(response => {
+                    const data = response.data;
+                    if (data) {
+                        if (data.temperature !== undefined) {
+                            document.getElementById("temp").innerText = data.temperature.toFixed(1);
+                        }
+                        if (data.humidity !== undefined) {
+                            document.getElementById("humidity").innerText = data.humidity.toFixed(1);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching current readings:', error);
+                });
+        }
+
+        // Function to update the chart with 5-minute interval data
+        function updateChartWithHistoricalData() {
+            axios.get('/api/weather/history')
+                .then(response => {
+                    const data = response.data;
+
+                    if (data.length > 0) {
+                        document.getElementById("db-status").textContent = "Connected, storing data";
+                        document.getElementById("db-status").style.color = "#2ecc71";
+                        document.getElementById("db-pulse").classList.remove("error");
+                    }
+
+                    // Clear existing data
+                    weatherChart.data.labels = [];
+                    weatherChart.data.datasets[0].data = [];
+                    weatherChart.data.datasets[1].data = [];
+
+                    // Add historical data points
+                    data.forEach(point => {
+                        const timestamp = new Date(point.timestamp).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        weatherChart.data.labels.push(timestamp);
+                        weatherChart.data.datasets[0].data.push(point.avg_temperature);
+                        weatherChart.data.datasets[1].data.push(point.avg_humidity);
+                    });
+
+                    // Update average displays
+                    if (data.length > 0) {
+                        const latest = data[data.length - 1];
+                        document.getElementById("avg-temp").innerText = latest.avg_temperature !== null ? latest.avg_temperature.toFixed(1) : "--";
+                        document.getElementById("avg-humidity").innerText = latest.avg_humidity !== null ? latest.avg_humidity.toFixed(1) : "--";
+                        document.getElementById("last-update").innerText = new Date().toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                        });
+                    }
+
+                    weatherChart.update('active');
+                })
+                .catch(error => {
+                    console.error('Error fetching historical data:', error);
+                    document.getElementById("db-status").textContent = "Error connecting to database";
+                    document.getElementById("db-status").style.color = "#e74c3c";
+                    document.getElementById("db-pulse").classList.add("error");
+                });
+        }
+
+        // Connect to the MQTT Broker over WebSockets
+        const mqttClient = mqtt.connect('ws://157.173.101.159:9001');
+
+        mqttClient.on('connect', () => {
+            console.log("Connected to MQTT via WebSockets");
+            mqttClient.subscribe("/work_group_01/room_temp/temperature");
+            mqttClient.subscribe("/work_group_01/room_temp/humidity");
+        });
+
+        mqttClient.on('message', (topic, message) => {
+            console.log(`Received: ${topic} → ${message.toString()}`);
+            const value = parseFloat(message.toString());
+
+            // Update the display with animation
+            if (topic === "/work_group_01/room_temp/temperature") {
+                const tempElement = document.getElementById("temp");
+                const tempValueContainer = tempElement.closest('.metric-value');
+                
+                animateValue(tempElement, parseFloat(tempElement.innerText) || 0, value, 1000);
+                
+                // Animate the temperature icon
+                const tempIcon = document.getElementById("temp-icon");
+                tempIcon.classList.add("pulse");
+                
+                // Add highlight effect to the value
+                tempValueContainer.classList.add('highlight');
+                
+                // Show temperature bubbles animation
+                createTemperatureBubbles();
+                
+                setTimeout(() => {
+                    tempIcon.classList.remove("pulse");
+                    tempValueContainer.classList.remove('highlight');
+                }, 800);
+
+                // Send to backend to store in SQLite
+                axios.post('/api/weather/data', {
+                    type: 'temperature',
+                    value: value,
+                    timestamp: new Date().toISOString()
+                }).catch(error => console.error('Error storing temperature:', error));
+
+            } else if (topic === "/work_group_01/room_temp/humidity") {
+                const humidityElement = document.getElementById("humidity");
+                const humidityValueContainer = humidityElement.closest('.metric-value');
+                
+                animateValue(humidityElement, parseFloat(humidityElement.innerText) || 0, value, 1000);
+                
+                // Animate the humidity icon
+                const humidityIcon = document.getElementById("humidity-icon");
+                humidityIcon.classList.add("pulse");
+                
+                // Add highlight effect to the value
+                humidityValueContainer.classList.add('highlight');
+                
+                setTimeout(() => {
+                    humidityIcon.classList.remove("pulse");
+                    humidityValueContainer.classList.remove('highlight');
+                }, 800);
+
+                // Send to backend to store in SQLite
+                axios.post('/api/weather/data', {
+                    type: 'humidity',
+                    value: value,
+                    timestamp: new Date().toISOString()
+                }).catch(error => console.error('Error storing humidity:', error));
+            }
+        });
+
+        // Animate value change function
+        function animateValue(element, start, end, duration) {
+            if (isNaN(start)) start = 0;
+            if (isNaN(end)) return;
+
+            const range = end - start;
+            let current = start;
+            const increment = end > start ? 0.1 : -0.1;
+            const stepTime = Math.abs(Math.floor(duration / (range / increment)));
+
+            const timer = setInterval(function () {
+                current += increment;
+                element.innerText = current.toFixed(1);
+
+                if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+                    element.innerText = end.toFixed(1);
+                    clearInterval(timer);
+                }
+            }, stepTime);
+        }
+
+        // Auto-typing subtitle function
+        function autoTypeSubtitle() {
+            const subtitles = [
+                "Live Environmental Monitoring System",
+                "Real-time Climate Data Analytics",
+                "Smart Weather Tracking Platform",
+                "IoT-Powered Atmospheric Monitoring",
+                "Precision Environmental Sensing"
+            ];
+            
+            let currentIndex = 0;
+            const subtitleElement = document.getElementById('subtitle');
+            
+            function typeAndErase(text, callback) {
+                let i = 0;
+                subtitleElement.textContent = '';
+                
+                // Type the text
+                function typeChar() {
+                    if (i < text.length) {
+                        subtitleElement.textContent += text.charAt(i);
+                        i++;
+                        setTimeout(typeChar, 70);
+                    } else {
+                        // Wait before erasing
+                        setTimeout(eraseChar, 2000);
+                    }
+                }
+                
+                // Erase the text
+                function eraseChar() {
+                    if (subtitleElement.textContent.length > 0) {
+                        subtitleElement.textContent = subtitleElement.textContent.slice(0, -1);
+                        setTimeout(eraseChar, 40);
+                    } else {
+                        // Move to next subtitle
+                        if (callback) callback();
+                    }
+                }
+                
+                typeChar();
+            }
+            
+            function cycleSubtitles() {
+                typeAndErase(subtitles[currentIndex], () => {
+                    currentIndex = (currentIndex + 1) % subtitles.length;
+                    cycleSubtitles();
+                });
+            }
+            
+            cycleSubtitles();
+        }
+
+        // Typing animation function
+        function typeWriter(element, text, speed, callback) {
+            let i = 0;
+            element.textContent = '';
+            element.classList.add('typing');
+            
+            function type() {
+                if (i < text.length) {
+                    element.textContent += text.charAt(i);
+                    i++;
+                    setTimeout(type, speed);
+                } else {
+                    element.classList.remove('typing');
+                    if (callback) callback();
+                }
+            }
+            
+            type();
+        }
+
+        // Animate entrance of elements
+        document.addEventListener('DOMContentLoaded', function() {
+            // Create animated drops
+            createDrops();
+            
+            // Type main title with delay
+            setTimeout(() => {
+                typeWriter(document.getElementById('main-title'), 'CLIMATE INTELLIGENCE HUB', 100, () => {
+                    // Start auto-typing subtitle after title is typed
+                    autoTypeSubtitle();
+                    
+                    // Animate chart panel
+                    setTimeout(() => {
+                        document.getElementById('chart-panel').classList.add('animate');
+                        
+                        // Type chart title after panel appears
+                        setTimeout(() => {
+                            typeWriter(document.getElementById('chart-title'), 'Climate Data Visualization', 80, () => {
+                                // Show chart legend after title is typed
+                                document.getElementById('chart-legend').classList.add('visible');
+                            });
+                        }, 300);
+                    }, 300);
+                    
+                    // Animate temperature card with delay
+                    setTimeout(() => {
+                        document.getElementById('temp-card').classList.add('animate');
+                        // Animate temperature icon after card appears
+                        setTimeout(() => {
+                            document.getElementById('temp-icon').classList.add('animate');
+                            // Show initial temperature animation
+                            createTemperatureBubbles();
+                        }, 300);
+                    }, 600);
+                    
+                    // Animate humidity card with delay
+                    setTimeout(() => {
+                        document.getElementById('humidity-card').classList.add('animate');
+                        // Animate humidity icon after card appears
+                        setTimeout(() => {
+                            document.getElementById('humidity-icon').classList.add('animate');
+                        }, 300);
+                    }, 800);
+                });
+            }, 500);
+        });
+
+        // Fetch current readings on load
+        fetchCurrentReadings();
+
+        // Update chart with historical data regularly
+        updateChartWithHistoricalData(); // Initial load
+        setInterval(updateChartWithHistoricalData, 30000); // Then every 30 seconds
+    </script>
+</body>
+
+</html>
